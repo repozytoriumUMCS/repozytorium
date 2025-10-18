@@ -149,4 +149,3 @@ else:
 
 flayer.share(everyone=True)
 print(f"Warstwa extentów: {flayer.url}")
-# ======================== KONIEC SKRYPTU 1 =========================
