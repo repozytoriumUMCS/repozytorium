@@ -6,12 +6,12 @@ from arcgis.gis import GIS
 
 #konfiguracja
 survey_item_id = "6ebf85954a5d46e1aa6f7aac120c7764"  #warstwa wynikowa z ArcGIS Survey123
-raster_folder  = r"/arcgis/home/rastry"
-extent_folder  = r"/arcgis/home/extenty"
-spatial_ref    = arcpy.SpatialReference(3857)
+raster_folder = r"/arcgis/home/rastry"
+extent_folder = r"/arcgis/home/extenty"
+spatial_ref = arcpy.SpatialReference(3857)
 valid_extensions = (".tif", ".tiff") 
-hosted_title   = "extenty_rastrowe"
-hosted_folder  = "repository"
+hosted_title = "extenty_rastrowe"
+hosted_folder = "repository"
 
 #inicjalizacja
 arcpy.env.overwriteOutput = True
@@ -42,7 +42,7 @@ for field_name, field_type in metadata_fields:
 
 insert_fields = ['SHAPE@'] + [f[0] for f in metadata_fields]
 
-# --- BUDOWANIE EXTENTÓW ---
+#tworzenie extentow
 with arcpy.da.InsertCursor(extent_shp, insert_fields) as icur:
     features = layer.query(where='1=1', out_fields='*', return_geometry=True)
     for feat in features.features:
@@ -52,12 +52,10 @@ with arcpy.da.InsertCursor(extent_shp, insert_fields) as icur:
         md_vals    = [feat.attributes.get(f[0], "") or "" for f in metadata_fields]
         md_vals[0] = oid  # survey_oid
 
-        # jeśli "tak", spróbuj pobrać ZIP i wyznaczyć extent z rastra; jeśli nie, użyj geometrii ręcznej
+        #warunek - jesli tak, extent wyznaczany jest z rastra w pliku ZIP, jesli nie, uzycie ksztaltu narysowanego przez uzytkownika
         if geo_flag == 'tak':
-            # pobierz pierwszy .zip (jeśli jest)
             zip_attachments = [a for a in attachments if a["name"].lower().endswith(".zip")]
             if not zip_attachments:
-                # brak zipa -> użyj ręcznego kształtu (o ile jest)
                 if feat.geometry:
                     geom = arcpy.AsShape(feat.geometry, True).projectAs(spatial_ref)
                     icur.insertRow([geom] + md_vals)
@@ -66,7 +64,7 @@ with arcpy.da.InsertCursor(extent_shp, insert_fields) as icur:
                     print(f"OID {oid}: Brak ZIP i brak ręcznej geometrii.")
                 continue
 
-            # rozpakuj ZIP
+            #rozpakowanie pliku ZIP
             save_path = layer.attachments.download(oid, zip_attachments[0]['id'], raster_folder)
             zip_path = save_path[0] if isinstance(save_path, list) else save_path
             extract_dir = os.path.join(raster_folder, f"{oid}")
@@ -78,7 +76,6 @@ with arcpy.da.InsertCursor(extent_shp, insert_fields) as icur:
                 print(f"OID {oid}: Błąd rozpakowywania ZIP: {e}")
                 continue
 
-            # znajdź TIF
             tif_list = [f for f in os.listdir(extract_dir) if f.lower().endswith(valid_extensions)]
             if not tif_list:
                 print(f"OID {oid}: Brak TIF w ZIP.")
@@ -90,7 +87,7 @@ with arcpy.da.InsertCursor(extent_shp, insert_fields) as icur:
             epsg = getattr(sr, "factoryCode", None)
             print(f"OID {oid}: Raster SR: {sr.name} (EPSG={epsg})")
 
-            # jeśli brak SR -> tylko przypisz; jeśli inny niż 3857 -> ProjectRaster
+            #upewnienie sie, ze uklad wspolrzednych jest odpowiedni
             final_raster = raster_path
             if (not sr) or (sr.name == "Unknown"):
                 arcpy.DefineProjection_management(final_raster, spatial_ref)
@@ -118,7 +115,6 @@ with arcpy.da.InsertCursor(extent_shp, insert_fields) as icur:
             except Exception as e:
                 print(f"OID {oid}: Błąd generowania extentu: {e}")
         else:
-            # ręczny extent z obiektu
             if feat.geometry:
                 geom = arcpy.AsShape(feat.geometry, True).projectAs(spatial_ref)
                 icur.insertRow([geom] + md_vals)
@@ -126,13 +122,11 @@ with arcpy.da.InsertCursor(extent_shp, insert_fields) as icur:
             else:
                 print(f"OID {oid}: Brak ręcznego extentu!")
 
-# --- PAKOWANIE I PUBLIKACJA SHP ---
+#spakowanie plikow oraz publikacja warstwy shapefile
 zip_out = r"/arcgis/home/extenty.zip"
 if os.path.exists(zip_out):
     os.remove(zip_out)
 shutil.make_archive(base_name=os.path.splitext(zip_out)[0], format='zip', root_dir=extent_folder)
-
-# upewnij się, że folder istnieje
 user = gis.users.me
 folder_id = None
 for f in user.folders:
@@ -141,8 +135,7 @@ for f in user.folders:
         break
 if folder_id is None:
     gis.content.folders.create(hosted_folder)
-
-# szukaj istniejącego itemu
+    
 existing = gis.content.search(f'title:{hosted_title} AND owner:{user.username}', item_type="Shapefile")
 if existing:
     item = existing[0]
