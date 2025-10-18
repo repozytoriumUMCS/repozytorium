@@ -1,5 +1,6 @@
 import arcpy
 from arcgis.gis import GIS
+
 def main():
     item_id = arcpy.GetParameterAsText(0)   #ID warstwy z ArcGIS Online
     output_shp = arcpy.GetParameterAsText(1)    #sciezka do pliku wynikowego shapefile
@@ -24,5 +25,6 @@ def main():
         arcpy.AddMessage(f"Zapisano warstwę do pliku shapefile: {output_shp}")
     except Exception as e:
         arcpy.AddError(f"Błąd pobierania lub zapisu: {str(e)}")
+
 if __name__ == "__main__":
     main()
