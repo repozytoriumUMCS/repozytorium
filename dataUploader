@@ -1,10 +1,12 @@
 import os
 import arcpy
 from arcgis.gis import GIS
+
 def main():
     zip_path = arcpy.GetParameterAsText(0)  #sciezka do pliku ZIP z warstwa shapefile
     user_oid = arcpy.GetParameterAsText(1)  #OID obiektu do podmiany
     layer_id = arcpy.GetParameterAsText(2)  #ID warstwy w ArcGIS Online
+
     #walidacja parametrow
     if not layer_id:
         arcpy.AddError("Nie podano Layer Item ID.")
@@ -12,6 +14,7 @@ def main():
     if not user_oid:
         arcpy.AddError("Nie podano OID.")
         raise arcpy.ExecuteError
+
     try:
         oid = int(user_oid)
     except Exception:
@@ -23,6 +26,7 @@ def main():
     if not zip_path.lower().endswith(".zip"):
         arcpy.AddError("Załącznik musi być w formacie .zip")
         raise arcpy.ExecuteError
+
     #pobranie warstwy oraz jej aktualizacja
     gis = GIS("home")
     try:
@@ -35,6 +39,7 @@ def main():
         arcpy.AddError(f"Nie udało się pobrać warstwy z Item ID {layer_id}: {e}")
         raise arcpy.ExecuteError
     oid_field = getattr(layer.properties, "objectIdField", None) or "OBJECTID"
+
     #pobranie oryginalnego rekordu
     try:
         query = layer.query(where=f"{oid_field} = {oid}", out_fields="*", return_geometry=True)
@@ -48,11 +53,13 @@ def main():
     arcpy.AddMessage(f"Pobrano rekord z {oid_field}={oid}")
     attributes = dict(original_feature.attributes or {})
     attributes["czy_mapa_posiada_georeferencj"] = "tak"
+
     #usuniecie pol systemowych
     system_fields = {"objectid", "globalid", "creationdate", "creator", "editdate", "editor"}
     for key in list(attributes.keys()):
         if key.lower() in system_fields:
             attributes.pop(key, None)
+
     #usuniecie oryginalnego rekordu
     try:
         layer.delete_features(where=f"{oid_field} = {oid}")
@@ -60,6 +67,7 @@ def main():
     except Exception as e:
         arcpy.AddError(f"Nie udało się usunąć rekordu {oid_field}={oid}: {e}")
         raise arcpy.ExecuteError
+
     #dodanie nowego rekordu
     new_feature = {"attributes": attributes, "geometry": None}
     try:
@@ -72,6 +80,7 @@ def main():
     except Exception as e:
         arcpy.AddError(f"Błąd dodawania nowego rekordu: {e}")
         raise arcpy.ExecuteError
+
     #dodanie attachmentu
     try:
         layer.attachments.add(new_oid, zip_path)
@@ -79,5 +88,6 @@ def main():
     except Exception as e:
         arcpy.AddError(f"Nie udało się dodać attachmentu: {e}")
         raise arcpy.ExecuteError
+
 if __name__ == "__main__":
     main()
