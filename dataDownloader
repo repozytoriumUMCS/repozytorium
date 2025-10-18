@@ -1,8 +1,8 @@
 import arcpy
 from arcgis.gis import GIS
 def main():
-    item_id = arcpy.GetParameterAsText(0)      # ID warstwy z AGOL
-    output_shp = arcpy.GetParameterAsText(1)    # Ścieżka do wynikowego shapefile
+    item_id = arcpy.GetParameterAsText(0)   #ID warstwy z ArcGIS Online
+    output_shp = arcpy.GetParameterAsText(1)    #sciezka do pliku wynikowego shapefile
     gis = GIS("home")
     try:
         item = gis.content.get(item_id)
@@ -11,19 +11,16 @@ def main():
             return
         layer = item.layers[0]
         features = layer.query(where="1=1", out_fields="*", return_geometry=True)
-        # Zapis tymczasowy do memory
-        temp_fc = "in_memory/temp_fc"
+        temp_fc = "in_memory/temp_fc"   #zapis w pamieci tymczasowej
         if arcpy.Exists(temp_fc):
             arcpy.Delete_management(temp_fc)
         features.save("in_memory", "temp_fc")
-        # Dodaj nowe pole survey_oid i skopiuj tam OBJECTID
-        arcpy.AddField_management(temp_fc, "survey_oid", "LONG")
+        arcpy.AddField_management(temp_fc, "survey_oid", "LONG")    #dodanie pola z id obiektu
         with arcpy.da.UpdateCursor(temp_fc, ["survey_oid", "OBJECTID"]) as cursor:
             for row in cursor:
                 row[0] = row[1]
                 cursor.updateRow(row)
-        # Zapis do pliku SHP
-        arcpy.CopyFeatures_management(temp_fc, output_shp)
+        arcpy.CopyFeatures_management(temp_fc, output_shp)  #zapis do pliku shp
         arcpy.AddMessage(f"Zapisano warstwę do pliku shapefile: {output_shp}")
     except Exception as e:
         arcpy.AddError(f"Błąd pobierania lub zapisu: {str(e)}")
