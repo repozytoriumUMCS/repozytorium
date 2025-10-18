@@ -1,0 +1,86 @@
+import os
+import arcpy
+from arcgis.gis import GIS
+def main():
+    # --- Parametry wejściowe (ArcGIS Pro Script Tool) ---
+    zip_path = arcpy.GetParameterAsText(0)   # pełna ścieżka do ZIP
+    user_oid = arcpy.GetParameterAsText(1)   # OID rekordu do podmiany
+    layer_id = arcpy.GetParameterAsText(2)   # Item ID warstwy (AGOL/Portal)
+    # --- Walidacja parametrów ---
+    if not layer_id:
+        arcpy.AddError("Nie podano Layer Item ID.")
+        raise arcpy.ExecuteError
+    if not user_oid:
+        arcpy.AddError("Nie podano OID.")
+        raise arcpy.ExecuteError
+    try:
+        oid = int(user_oid)
+    except Exception:
+        arcpy.AddError("OID musi być liczbą całkowitą.")
+        raise arcpy.ExecuteError
+    if not zip_path or not os.path.isfile(zip_path):
+        arcpy.AddError(f"Nie znaleziono pliku ZIP: {zip_path}")
+        raise arcpy.ExecuteError
+    if not zip_path.lower().endswith(".zip"):
+        arcpy.AddError("Załącznik musi być w formacie .zip")
+        raise arcpy.ExecuteError
+    # --- Połączenie i pobranie warstwy ---
+    gis = GIS("home")
+    try:
+        item = gis.content.get(layer_id)               # <— BEZ klamerek!
+        if not item or not getattr(item, "layers", None):
+            arcpy.AddError("Nie znaleziono warstw w podanym elemencie (Item).")
+            raise arcpy.ExecuteError
+        layer = item.layers[0]
+    except Exception as e:
+        arcpy.AddError(f"Nie udało się pobrać warstwy z Item ID {layer_id}: {e}")
+        raise arcpy.ExecuteError
+    # --- Ustal nazwę pola OID (bywa 'OBJECTID' lub inna) ---
+    oid_field = getattr(layer.properties, "objectIdField", None) or "OBJECTID"
+    # --- Pobranie oryginalnego rekordu ---
+    try:
+        query = layer.query(where=f"{oid_field} = {oid}", out_fields="*", return_geometry=True)
+    except Exception as e:
+        arcpy.AddError(f"Zapytanie do warstwy nie powiodło się: {e}")
+        raise arcpy.ExecuteError
+    if not query.features:
+        arcpy.AddError(f"Nie znaleziono rekordu z {oid_field}={oid}.")
+        raise arcpy.ExecuteError
+    original_feature = query.features[0]
+    arcpy.AddMessage(f"Pobrano rekord z {oid_field}={oid}")
+    # --- Skopiuj atrybuty i ustaw flagę georeferencji ---
+    attributes = dict(original_feature.attributes or {})
+    attributes["czy_mapa_posiada_georeferencj"] = "tak"
+    # Usuń pola systemowe niezależnie od wielkości liter
+    system_fields = {"objectid", "globalid", "creationdate", "creator", "editdate", "editor"}
+    for key in list(attributes.keys()):
+        if key.lower() in system_fields:
+            attributes.pop(key, None)
+    # --- Usuń oryginalny rekord ---
+    try:
+        layer.delete_features(where=f"{oid_field} = {oid}")
+        arcpy.AddMessage(f"Usunięto rekord {oid_field}={oid}")
+    except Exception as e:
+        arcpy.AddError(f"Nie udało się usunąć rekordu {oid_field}={oid}: {e}")
+        raise arcpy.ExecuteError
+    # --- Dodaj nowy rekord (bez geometrii) z tymi samymi atrybutami ---
+    new_feature = {"attributes": attributes, "geometry": None}
+    try:
+        result = layer.edit_features(adds=[new_feature])
+        if not result['addResults'] or not result['addResults'][0].get('success'):
+            arcpy.AddError(f"Nie udało się dodać nowego rekordu: {result}")
+            raise arcpy.ExecuteError
+        new_oid = result['addResults'][0]['objectId']
+        arcpy.AddMessage(f"Dodano nowy rekord z {oid_field}={new_oid}")
+    except Exception as e:
+        arcpy.AddError(f"Błąd dodawania nowego rekordu: {e}")
+        raise arcpy.ExecuteError
+    # --- Dodaj ZIP jako attachment do nowego OID ---
+    try:
+        layer.attachments.add(new_oid, zip_path)
+        arcpy.AddMessage(f"Dodano ZIP jako attachment do rekordu {oid_field}={new_oid}")
+    except Exception as e:
+        arcpy.AddError(f"Nie udało się dodać attachmentu: {e}")
+        raise arcpy.ExecuteError
+if __name__ == "__main__":
+    main()
