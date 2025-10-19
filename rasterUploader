@@ -1,4 +1,3 @@
-# ========================== SKRYPT 2: RASTRY (FIX 000523 + STABILIZACJA) ==========================
 import os
 import zipfile
 import hashlib
@@ -9,25 +8,24 @@ from arcgis.raster.utils import publish_hosted_imagery_layer
 from datetime import datetime
 import urllib3
 
-# --- KONFIGURACJA ---
-survey_item_id  = "6ebf85954a5d46e1aa6f7aac120c7764"
-extent_layer_id = "b02d534c0723407496844b3483ef2dd6"
-workspace       = r"/arcgis/home/pobrane_rastry"
+#konfiguracja
+survey_item_id = "id-warstwy-wynikowej-z-arcgis-survey-123"
+extent_layer_id = "id-warstwy-wynikowej-ze-skryptu-tworzacego-extenty"
+workspace = r"/arcgis/home/pobrane_rastry"
 
-# Kluczowa zmiana: użyj 102100 (Auxiliary Sphere), akceptuj też 3857 jako równoważny
-spatial_ref     = arcpy.SpatialReference(102100)  # WGS_1984_Web_Mercator_Auxiliary_Sphere
+spatial_ref = arcpy.SpatialReference(102100)
 _ACCEPTABLE_WKIDS = {102100, 3857}
 
-# --- INICJALIZACJA ---
+#inicjalizacja skryptu
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 arcpy.env.overwriteOutput = True
-arcpy.env.outputCoordinateSystem = spatial_ref  # <<< ważne
+arcpy.env.outputCoordinateSystem = spatial_ref
 gis = GIS("home")
 survey_layer = gis.content.get(survey_item_id).layers[0]
 extent_layer = FeatureLayer(gis.content.get(extent_layer_id).layers[0].url)
 os.makedirs(workspace, exist_ok=True)
 
-# ---------- POMOCNICZE ----------
+#tworzenie hashu dla rastra
 def _md5(path):
     h = hashlib.md5()
     with open(path, 'rb') as f:
@@ -45,7 +43,6 @@ def _build_where_for_oid(oid):
     return f"survey_oid = '{oid}'" if fdef['type'] == 'esriFieldTypeString' else f"survey_oid = {oid}"
 
 def _ensure_extent_sr_3857(geom_json):
-    """Zwraca extent w SR=102100/3857 jako (xmin,ymin,xmax,ymax)."""
     shp = arcpy.AsShape(geom_json, True)
     if shp.spatialReference is None or shp.spatialReference.factoryCode not in _ACCEPTABLE_WKIDS:
         shp = shp.projectAs(spatial_ref)
@@ -62,25 +59,22 @@ def _calc_stats_pyramids(ras_path):
     except Exception:
         pass
 
+#zapisanie rastra
 def _copy_to_geotiff(src, out_tif):
-    """Stabilne zapisanie GeoTIFF: najpierw spróbuj CopyRaster, a gdyby się wywaliło – RasterToOtherFormat."""
     try:
         arcpy.management.CopyRaster(in_raster=src, out_rasterdataset=out_tif, format="TIFF")
         return out_tif
     except Exception as e1:
-        # Fallback: RasterToOtherFormat zapisze do folderu (zachowa nazwę bez rozszerzenia)
         out_folder = os.path.dirname(out_tif)
         base_name  = os.path.splitext(os.path.basename(out_tif))[0]
         tmp_folder = os.path.join(out_folder, "_r2of_tmp")
         os.makedirs(tmp_folder, exist_ok=True)
         try:
             arcpy.conversion.RasterToOtherFormat(in_rasters=[src], out_folder=tmp_folder, raster_format="TIFF")
-            # znajdź utworzony plik .tif i przenieś pod docelową nazwę
             candidates = [os.path.join(tmp_folder, f) for f in os.listdir(tmp_folder) if f.lower().endswith(".tif")]
             if not candidates:
                 raise RuntimeError("RasterToOtherFormat nie zwrócił żadnego TIFF-a.")
             produced = candidates[0]
-            # przenieś/zmień nazwę
             if os.path.exists(out_tif):
                 try:
                     os.remove(out_tif)
@@ -92,15 +86,9 @@ def _copy_to_geotiff(src, out_tif):
             raise RuntimeError(f"CopyRaster i RasterToOtherFormat nie powiodły się: {e1} | {e2}")
 
 def _embed_georef_with_tfw(src_tif, extent_xyxy, out_tif):
-    """
-    Jeśli raster ma SR ≠ Unknown → w razie potrzeby rzutuj do 102100/3857.
-    Jeśli brak SR → zapisz world file (TFW) z extenta, DefineProjection(102100), a potem wypal GeoTIFF.
-    Zwraca (ścieżka_do_finalnego_TIF, czy_była_ingerecja_bool).
-    """
     dsc = arcpy.Describe(src_tif)
     sr  = dsc.spatialReference
 
-    # Ma SR?
     if sr and sr.name != "Unknown" and getattr(sr, "factoryCode", 0) != 0:
         wkid = sr.factoryCode
         if wkid not in _ACCEPTABLE_WKIDS:
@@ -108,12 +96,10 @@ def _embed_georef_with_tfw(src_tif, extent_xyxy, out_tif):
             arcpy.management.ProjectRaster(src_tif, proj, spatial_ref)
             _calc_stats_pyramids(proj)
             return proj, True
-        # Jest już 102100/3857 → dla pewności kopiujemy do „czystego” GeoTIFF (często stabilniejsze do publikacji)
         copied = _copy_to_geotiff(src_tif, out_tif)
         _calc_stats_pyramids(copied)
         return copied, False
 
-    # Brak SR → wylicz parametry z extenta i utwórz TFW
     xmin, ymin, xmax, ymax = extent_xyxy
     ras = arcpy.Raster(src_tif)
     cols, rows = ras.width, ras.height
@@ -131,7 +117,6 @@ def _embed_georef_with_tfw(src_tif, extent_xyxy, out_tif):
     return cooked, True
 
 def _query_extent_feature(oid):
-    """Zwraca pierwszy feature z extent layer dla danego survey_oid (out_fields='*')."""
     where = _build_where_for_oid(oid)
     return extent_layer.query(where=where, out_fields="*", return_geometry=True)
 
@@ -147,14 +132,14 @@ def _update_fileid_for_oid(oid, viewer_url):
         err = res.get("updateResults", [{}])[0].get("error", {})
         raise RuntimeError(f"Błąd aktualizacji fileID: {err}")
 
-# ---------- GŁÓWNA LOGIKA ----------
+#glowna logika
 def process_feature(feature):
     oid = feature.attributes["objectid"]
     title_base = (feature.attributes.get("title") or f"Mapa_{oid}").replace(" ", "_")
     title = f"{title_base}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     print(f"\nOID {oid}: Przetwarzanie...")
 
-    # 1) Pobierz ZIP i rozpakuj
+    #pobranie oraz rozpakowanie pliku ZIP
     atts = survey_layer.attachments.get_list(oid)
     zips = [a for a in atts if a["name"].lower().endswith(".zip")]
     if not zips:
@@ -170,13 +155,13 @@ def process_feature(feature):
     except Exception as e:
         return f"OID {oid}: Błąd rozpakowywania: {e}"
 
-    # 2) Znajdź TIF
+    #szukanie plikow TIF
     tifs = [f for f in os.listdir(work) if f.lower().endswith((".tif", ".tiff"))]
     if not tifs:
         return f"OID {oid}: Brak pliku TIF w ZIP."
     tif = os.path.join(work, tifs[0])
 
-    # 3) Pobierz extent z warstwy extentów (ZAWSZE out_fields="*")
+    #pobranie extentow z warstwy
     try:
         ext_q = _query_extent_feature(oid)
     except Exception as e:
@@ -187,11 +172,11 @@ def process_feature(feature):
         return f"OID {oid}: Brak geometrii w extentach."
     xmin, ymin, xmax, ymax = _ensure_extent_sr_3857(ext_q.features[0].geometry)
 
-    # 4) Georeferencja/konwersja do stabilnego GeoTIFF
+    #georeferencja oraz konwersja do TIF
     final_tif_path = os.path.join(work, f"georef_{os.path.basename(tif)}")
     final_tif, _ = _embed_georef_with_tfw(tif, (xmin, ymin, xmax, ymax), final_tif_path)
 
-    # 5) Publikacja jako Hosted Imagery Layer
+    #publikacja jako Hosted Imagery Layer
     try:
         published = publish_hosted_imagery_layer(
             input_data=[final_tif],
@@ -205,7 +190,7 @@ def process_feature(feature):
     except Exception as e:
         return f"OID {oid}: Błąd publikacji: {e}"
 
-    # 6) Aktualizacja fileID
+    #aktualizacja pola fileID
     try:
         _update_fileid_for_oid(oid, viewer_url)
         return f"OID {oid}: Sukces. Link: {viewer_url}"
