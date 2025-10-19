@@ -5,7 +5,7 @@ import arcpy
 from arcgis.gis import GIS
 
 #konfiguracja
-survey_item_id = "6ebf85954a5d46e1aa6f7aac120c7764"  #warstwa wynikowa z ArcGIS Survey123
+survey_item_id = "id-warstwy-wynikowej-z-arcgis-survey-123"
 raster_folder = r"/arcgis/home/rastry"
 extent_folder = r"/arcgis/home/extenty"
 spatial_ref = arcpy.SpatialReference(3857)
