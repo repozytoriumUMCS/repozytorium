@@ -29,11 +29,11 @@ arcpy.CreateFeatureclass_management(extent_folder, "extenty3857.shp", "POLYGON",
 
 metadata_fields = [
     ("survey_oid", "LONG"),
-    ("altTitle",   "TEXT"), ("author",   "TEXT"), ("creatDate","TEXT"), ("creator", "TEXT"),
-    ("descriptn",  "TEXT"), ("distFormat","TEXT"),("fileID",  "TEXT"), ("language","TEXT"),
-    ("placeName",  "TEXT"), ("onlineRes","TEXT"), ("publisher","TEXT"), ("relation","TEXT"),
-    ("repository", "TEXT"), ("scaleMap", "TEXT"), ("srcCateg","TEXT"), ("srcType", "TEXT"),
-    ("subject",    "TEXT"), ("tempExtent","TEXT"), ("title",  "TEXT"), ("url",    "TEXT"),
+    ("alttitle",   "TEXT"), ("author",   "TEXT"), ("creatdate","TEXT"), ("creator", "TEXT"),
+    ("descriptn",  "TEXT"), ("distformat","TEXT"),("fileID",  "TEXT"), ("fileident", "TEXT"), ("language","TEXT"),
+    ("placename",  "TEXT"), ("onlineres","TEXT"), ("publisher","TEXT"), ("relation","TEXT"),
+    ("repository", "TEXT"), ("rodzajwp", "TEXT"), ("scalemap", "TEXT"), ("srccat","TEXT"), ("srctype", "TEXT"),
+    ("subject",    "TEXT"), ("tempextent","TEXT"), ("title",  "TEXT"), ("url",    "TEXT"),
     ("visible",    "TEXT")
 ]
 for field_name, field_type in metadata_fields:
