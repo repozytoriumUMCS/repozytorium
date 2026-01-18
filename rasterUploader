@@ -201,14 +201,14 @@ def main():
     try:
         feats = survey_layer.query(where="1=1", out_fields="objectid,title", return_geometry=False).features
     except Exception as e:
-        print(f"❌ Błąd zapytania warstwy Survey: {e}")
+        print(f"Błąd zapytania warstwy Survey: {e}")
         return
     for f in feats:
         try:
             print(process_feature(f))
         except Exception as e:
-            print(f"❌ Błąd rekordu {f.attributes['objectid']}: {e}")
+            print(f"Błąd rekordu {f.attributes['objectid']}: {e}")
 
 if __name__ == "__main__":
     main()
-    print("\n✅ Przetwarzanie zakończone.")
+    print("\nPrzetwarzanie zakończone.")
